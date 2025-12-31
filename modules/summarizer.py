@@ -10,14 +10,14 @@ from enum import Enum
 # Try to import OpenAI, fallback to extractive summarization
 try:
     from openai import OpenAI
-    OPENAI_AVAILABLE = True
+    PERPLEXITY_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
+    PERPLEXITY_AVAILABLE = False
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
-from config import OPENAI_API_KEY, SUMMARY_LIMITS, GPT_MODEL, GPT_FALLBACK_MODEL
+from config import PERPLEXITY_API_KEY, PERPLEXITY_BASE_URL, SUMMARY_LIMITS, PERPLEXITY_MODEL, PERPLEXITY_FALLBACK_MODEL
 
 
 class SummaryLevel(Enum):
@@ -48,16 +48,16 @@ class DocumentSummarizer:
         Initialize summarizer
         
         Args:
-            api_key: OpenAI API key (optional, uses env var if not provided)
+            api_key: Perplexity API key (optional, uses env var if not provided)
         """
-        self.api_key = api_key or OPENAI_API_KEY
+        self.api_key = api_key or PERPLEXITY_API_KEY
         self.client = None
         
-        if OPENAI_AVAILABLE and self.api_key:
-            self.client = OpenAI(api_key=self.api_key)
-            print("✓ OpenAI client initialized")
+        if PERPLEXITY_AVAILABLE and self.api_key:
+            self.client = OpenAI(api_key=self.api_key, base_url=PERPLEXITY_BASE_URL)
+            print("✓ Perplexity client initialized")
         else:
-            print("⚠ OpenAI not available, using extractive summarization")
+            print("⚠ Perplexity not available, using extractive summarization")
     
     def summarize(self, text: str, level: SummaryLevel = SummaryLevel.DIRECTOR) -> Summary:
         """
@@ -74,7 +74,7 @@ class DocumentSummarizer:
             level = SummaryLevel(level.lower())
         
         if self.client:
-            return self._summarize_with_gpt(text, level)
+            return self._summarize_with_perplexity(text, level)
         else:
             return self._summarize_extractive(text, level)
     
@@ -94,8 +94,8 @@ class DocumentSummarizer:
             'officer': self.summarize(text, SummaryLevel.OFFICER)
         }
     
-    def _summarize_with_gpt(self, text: str, level: SummaryLevel) -> Summary:
-        """Use GPT for intelligent summarization"""
+    def _summarize_with_perplexity(self, text: str, level: SummaryLevel) -> Summary:
+        """Use Perplexity for intelligent summarization"""
         
         prompts = {
             SummaryLevel.SECRETARY: f"""You are summarizing a government document for a Secretary-level official.
@@ -104,7 +104,7 @@ Create a ONE SENTENCE summary (maximum 50 words) capturing the most critical poi
 Focus on: What is the main decision/order/directive?
 
 Document:
-{text[:8000]}
+{text[:10000]}
 
 Summary (1 sentence, max 50 words):""",
             
@@ -114,7 +114,7 @@ Create a ONE PARAGRAPH summary (maximum 150 words) with key details.
 Include: Main directive, key stakeholders, timeline if any, budget if mentioned.
 
 Document:
-{text[:8000]}
+{text[:10000]}
 
 Summary (1 paragraph, max 150 words):""",
             
@@ -130,26 +130,25 @@ Create a DETAILED summary (maximum 500 words) with:
 7. Reporting requirements
 
 Document:
-{text[:8000]}
+{text[:10000]}
 
 Detailed Summary with Action Items:"""
         }
         
         try:
             response = self.client.chat.completions.create(
-                model=GPT_MODEL,
+                model=PERPLEXITY_MODEL,
                 messages=[
                     {"role": "system", "content": "You are an expert at summarizing Indian government documents. Be precise, formal, and action-oriented."},
                     {"role": "user", "content": prompts[level]}
                 ],
-                max_tokens=SUMMARY_LIMITS[level.value]["max_words"] * 2,
                 temperature=0.3
             )
             
             content = response.choices[0].message.content.strip()
             
         except Exception as e:
-            print(f"GPT error: {e}, falling back to extractive")
+            print(f"Perplexity error: {e}, falling back to extractive")
             return self._summarize_extractive(text, level)
         
         # Extract key points

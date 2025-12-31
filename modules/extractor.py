@@ -9,17 +9,17 @@ from datetime import datetime
 from enum import Enum
 from dateutil import parser as date_parser
 
-# Try OpenAI for intelligent extraction
+# Try OpenAI/Perplexity for intelligent extraction
 try:
     from openai import OpenAI
-    OPENAI_AVAILABLE = True
+    PERPLEXITY_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
+    PERPLEXITY_AVAILABLE = False
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
-from config import OPENAI_API_KEY, GPT_MODEL
+from config import PERPLEXITY_API_KEY, PERPLEXITY_BASE_URL, PERPLEXITY_MODEL
 
 
 class Priority(Enum):
@@ -59,12 +59,12 @@ class ActionExtractor:
     
     def __init__(self, api_key: Optional[str] = None):
         """Initialize extractor"""
-        self.api_key = api_key or OPENAI_API_KEY
+        self.api_key = api_key or PERPLEXITY_API_KEY
         self.client = None
         
-        if OPENAI_AVAILABLE and self.api_key:
-            self.client = OpenAI(api_key=self.api_key)
-            print("✓ Action Extractor with AI")
+        if PERPLEXITY_AVAILABLE and self.api_key:
+            self.client = OpenAI(api_key=self.api_key, base_url=PERPLEXITY_BASE_URL)
+            print("✓ Action Extractor with Perplexity")
         else:
             print("⚠ Using rule-based extraction")
         
@@ -110,7 +110,7 @@ class ActionExtractor:
             ExtractionResult with actions, deadlines, etc.
         """
         if self.client:
-            actions = self._extract_with_ai(text)
+            actions = self._extract_with_perplexity(text)
         else:
             actions = self._extract_rule_based(text)
         
@@ -128,8 +128,8 @@ class ActionExtractor:
             references=references
         )
     
-    def _extract_with_ai(self, text: str) -> List[ActionItem]:
-        """Use GPT for intelligent action extraction"""
+    def _extract_with_perplexity(self, text: str) -> List[ActionItem]:
+        """Use Perplexity for intelligent action extraction"""
         
         prompt = f"""Extract action items from this government document.
 
@@ -149,18 +149,17 @@ ORIGINAL: [exact quote from document]
 ---
 
 Document:
-{text[:6000]}
+{text[:8000]}
 
 Extract all action items:"""
 
         try:
             response = self.client.chat.completions.create(
-                model=GPT_MODEL,
+                model=PERPLEXITY_MODEL,
                 messages=[
                     {"role": "system", "content": "You are an expert at extracting action items from Indian government documents. Be precise and extract ALL action items."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=2000,
                 temperature=0.2
             )
             
@@ -168,7 +167,7 @@ Extract all action items:"""
             return self._parse_ai_response(content)
             
         except Exception as e:
-            print(f"AI extraction failed: {e}")
+            print(f"Perplexity extraction failed: {e}")
             return self._extract_rule_based(text)
     
     def _parse_ai_response(self, response: str) -> List[ActionItem]:

@@ -8,20 +8,20 @@ from dataclasses import dataclass
 
 try:
     from openai import OpenAI
-    OPENAI_AVAILABLE = True
+    PERPLEXITY_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
+    PERPLEXITY_AVAILABLE = False
 
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
-from config import OPENAI_API_KEY, GPT_MODEL, GPT_FALLBACK_MODEL
+from config import PERPLEXITY_API_KEY, PERPLEXITY_BASE_URL, PERPLEXITY_MODEL, PERPLEXITY_FALLBACK_MODEL
 
 
 @dataclass
 class ChatMessage:
     """Chat message"""
-    role: str  # 'user' or 'assistant'
+    role: str  # 'user', 'assistant' or 'system'
     content: str
     timestamp: str = ""
 
@@ -38,18 +38,18 @@ class ChatResponse:
 class DocumentChatbot:
     """
     AI-powered chatbot for government document queries
-    Supports bilingual (Hindi + English) conversations
+    Supports bilingual (Hindi + English) conversations using Perplexity
     """
     
     def __init__(self, api_key: Optional[str] = None):
         """Initialize chatbot"""
-        self.api_key = api_key or OPENAI_API_KEY
+        self.api_key = api_key or PERPLEXITY_API_KEY
         self.client = None
         self.conversation_history: List[Dict] = []
         self.document_context: str = ""
         
-        if OPENAI_AVAILABLE and self.api_key:
-            self.client = OpenAI(api_key=self.api_key)
+        if PERPLEXITY_AVAILABLE and self.api_key:
+            self.client = OpenAI(api_key=self.api_key, base_url=PERPLEXITY_BASE_URL)
     
     def set_document_context(self, text: str, doc_id: str = "", title: str = ""):
         """Set the document context for queries"""
@@ -74,17 +74,17 @@ class DocumentChatbot:
         is_hindi = any('\u0900' <= char <= '\u097F' for char in user_message)
         
         if self.client:
-            return self._chat_with_gpt(user_message, is_hindi)
+            return self._chat_with_perplexity(user_message, is_hindi)
         else:
             return self._chat_fallback(user_message, is_hindi)
     
-    def _chat_with_gpt(self, user_message: str, is_hindi: bool) -> ChatResponse:
-        """Use GPT for intelligent responses"""
+    def _chat_with_perplexity(self, user_message: str, is_hindi: bool) -> ChatResponse:
+        """Use Perplexity for intelligent responses"""
         system_prompt = f"""You are a helpful government document assistant for eFile Sathi (ई-फाइल साथी).
 You help government officers and citizens understand official documents.
 
 CURRENT DOCUMENT CONTEXT:
-{self.document_context[:4000] if self.document_context else "No document uploaded yet."}
+{self.document_context[:10000] if self.document_context else "No document uploaded yet."}
 
 INSTRUCTIONS:
 1. Answer questions based on the document context above
@@ -104,7 +104,7 @@ EXAMPLE RESPONSES:
         # Build conversation
         messages = [{"role": "system", "content": system_prompt}]
         
-        # Add conversation history (last 6 exchanges)
+        # Add conversation history
         for msg in self.conversation_history[-6:]:
             messages.append(msg)
         
@@ -113,9 +113,8 @@ EXAMPLE RESPONSES:
         
         try:
             response = self.client.chat.completions.create(
-                model=GPT_MODEL,
+                model=PERPLEXITY_MODEL,
                 messages=messages,
-                max_tokens=500,
                 temperature=0.7
             )
             
@@ -133,22 +132,8 @@ EXAMPLE RESPONSES:
             )
             
         except Exception as e:
-            # Fallback to simpler model
-            try:
-                response = self.client.chat.completions.create(
-                    model=GPT_FALLBACK_MODEL,
-                    messages=messages,
-                    max_tokens=400,
-                    temperature=0.7
-                )
-                return ChatResponse(
-                    message=response.choices[0].message.content,
-                    sources=[self.doc_id] if self.document_context else [],
-                    confidence=0.7,
-                    language="hindi" if is_hindi else "english"
-                )
-            except:
-                return self._chat_fallback(user_message, is_hindi)
+            print(f"Perplexity error: {e}")
+            return self._chat_fallback(user_message, is_hindi)
     
     def _chat_fallback(self, user_message: str, is_hindi: bool) -> ChatResponse:
         """Fallback responses without AI"""

@@ -20,7 +20,8 @@ DATA_DIR.mkdir(exist_ok=True)
 BLOCKCHAIN_DIR.mkdir(exist_ok=True)
 
 # API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
+PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
 # Tesseract configuration
 TESSERACT_CMD = os.getenv("TESSERACT_CMD", "/usr/local/bin/tesseract")
@@ -38,8 +39,8 @@ SUPPORTED_LANGUAGES = {
 
 # Model settings
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-GPT_MODEL = "gpt-4"
-GPT_FALLBACK_MODEL = "gpt-3.5-turbo"
+PERPLEXITY_MODEL = "llama-3.1-sonar-large-128k-online"
+PERPLEXITY_FALLBACK_MODEL = "llama-3.1-sonar-small-128k-online"
 
 # Summary length limits
 SUMMARY_LIMITS = {
