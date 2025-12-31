@@ -79,6 +79,16 @@
       "user": "upload_system",
       "previous_hash": "c9c52417ab1ef6a225ed563a86dc9409a0adbf0512b2181a2d9b44c1bbf24eb5",
       "hash": "368c6e3d34457a504920e70a6cfd39018d98e4a3546e55fbf7596efc543e75ad"
+    },
+    {
+      "index": 8,
+      "timestamp": "2025-12-31T23:21:36.528078",
+      "doc_id": "c8b4e8c8",
+      "doc_hash": "4f099b8dcc6222507b6b51e5868ca182b8e8228d594ad54a61702e038d34c604",
+      "action": "created",
+      "user": "upload_system",
+      "previous_hash": "368c6e3d34457a504920e70a6cfd39018d98e4a3546e55fbf7596efc543e75ad",
+      "hash": "a5f33e89041cc205b59b2a00dbaf1867abc62c289ec808fa703e85205df1ffab"
     }
   ],
   "document_index": {
@@ -127,6 +137,13 @@
     "1c0e3ec4": {
       "original_hash": "4f099b8dcc6222507b6b51e5868ca182b8e8228d594ad54a61702e038d34c604",
       "created_at": "2025-12-31T17:22:49.679059",
+      "created_by": "upload_system",
+      "access_count": 0,
+      "last_accessed": null
+    },
+    "c8b4e8c8": {
+      "original_hash": "4f099b8dcc6222507b6b51e5868ca182b8e8228d594ad54a61702e038d34c604",
+      "created_at": "2025-12-31T23:21:36.528078",
       "created_by": "upload_system",
       "access_count": 0,
       "last_accessed": null
