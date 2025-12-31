@@ -28,6 +28,7 @@ from modules.rti import RTIGenerator
 from modules.blockchain import BlockchainVerifier
 from modules.pdf_generator import generate_text_pdf, generate_summary_pdf, generate_rti_pdf
 from modules.classifier import classify_document
+from modules.database import save_document, get_all_documents_from_db, get_document_by_id, find_similar_documents
 
 # Import NEW modules for hackathon features
 from modules.chatbot import chat_with_document, chatbot
@@ -230,6 +231,26 @@ async def upload_and_ocr(
         # Classify document
         classification = classify_document(result.text)
         
+        # Check for similar/duplicate documents
+        similar_docs = find_similar_documents(result.text, threshold=0.6)
+        
+        # Save to database for persistence
+        save_document(
+            doc_id=doc_id,
+            filename=file.filename,
+            file_path=str(file_path),
+            ocr_text=result.text,
+            file_type=ext,
+            file_size=file_path.stat().st_size,
+            metadata={
+                "page_count": result.page_count,
+                "word_count": result.word_count,
+                "language": result.language,
+                "has_handwriting": result.has_handwriting,
+                "category": classification["category"]
+            }
+        )
+        
         return {
             "success": True,
             "doc_id": doc_id,
@@ -243,7 +264,8 @@ async def upload_and_ocr(
             },
             "confidence": confidence_report,
             "category": classification["category"],
-            "classification": classification
+            "classification": classification,
+            "similar_documents": similar_docs
         }
         
     except Exception as e:
@@ -252,6 +274,40 @@ async def upload_and_ocr(
     finally:
         # Cleanup temp file (optional - keep for reference)
         pass
+
+
+# ========================
+# Document Library Endpoint
+# ========================
+
+@app.get("/documents/list")
+async def list_documents():
+    """
+    List all uploaded documents
+    
+    Returns all documents in the system with their metadata
+    """
+    # Get documents from SQLite database
+    documents = get_all_documents_from_db()
+    
+    return {
+        "success": True,
+        "count": len(documents),
+        "documents": documents
+    }
+
+
+@app.get("/documents/{doc_id}")
+async def get_document(doc_id: str):
+    """
+    Get details of a specific document
+    """
+    doc = get_document_by_id(doc_id)
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return {"success": True, "document": doc}
 
 
 # ========================

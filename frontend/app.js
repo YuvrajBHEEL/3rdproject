@@ -24,6 +24,17 @@ let analyticsData = {
 let uploadQueue = [];
 
 // ========================================
+// Utility Functions
+// ========================================
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ========================================
 // DOM Ready
 // ========================================
 
@@ -121,6 +132,7 @@ function initializeNavigation() {
     const sections = {
         'home': document.getElementById('home-section'),
         'upload': document.getElementById('upload-section'),
+        'documents': document.getElementById('documents-section'),
         'search': document.getElementById('search-section'),
         'rti': document.getElementById('rti-section'),
         'comparison': document.getElementById('comparison-section'),
@@ -161,6 +173,11 @@ function initializeNavigation() {
                 // Load analytics if needed
                 if (sectionKey === 'analytics') {
                     loadAnalyticsData();
+                }
+
+                // Load documents library if needed
+                if (sectionKey === 'documents') {
+                    loadDocuments();
                 }
             } else {
                 console.error(`Section not found: ${sectionKey}`);
@@ -323,6 +340,16 @@ async function handleFileUpload(file) {
 
     // Show success
     showStatus('success', `✓ Processed successfully: ${data.metadata.word_count} words, ${data.metadata.page_count} pages`);
+
+    // Check for similar/duplicate documents
+    if (data.similar_documents && data.similar_documents.length > 0) {
+        const dupList = data.similar_documents.map(d =>
+            `• ${d.filename} (${d.similarity}% similar)`
+        ).join('\n');
+
+        showToast('warning', '⚠️ Similar Documents Found',
+            `This document appears similar to existing documents:\n${dupList}`, 8000);
+    }
 
     // Display results
     displayOCRResults(data);
@@ -843,6 +870,359 @@ let timelineChart = null;
 function initializeAnalytics() {
     // Charts will be initialized when the analytics section is shown
 }
+
+// ========================================
+// Document Library Functions
+// ========================================
+
+async function loadDocuments() {
+    const grid = document.getElementById('documentsGrid');
+    const countBadge = document.getElementById('libraryCount');
+
+    if (!grid) return;
+
+    // Show loading
+    grid.innerHTML = `
+        <div class="loading-placeholder">
+            <span class="loading-spinner">⏳</span>
+            <p>Loading documents...</p>
+        </div>
+    `;
+
+    try {
+        const response = await fetch(`${API_BASE}/documents/list`);
+        const data = await response.json();
+
+        if (data.success && data.documents.length > 0) {
+            countBadge.textContent = `${data.count} documents`;
+
+            grid.innerHTML = data.documents.map(doc => `
+                <div class="document-card" onclick="viewDocument('${doc.doc_id}')">
+                    <div class="document-card-header">
+                        <span class="document-icon">📄</span>
+                        <div>
+                            <div class="document-title">${escapeHtml(doc.title)}</div>
+                            <div class="document-id">ID: ${doc.doc_id}</div>
+                        </div>
+                    </div>
+                    <div class="document-preview">${escapeHtml(doc.text_preview || 'No preview available')}</div>
+                    <div class="document-meta">
+                        <span class="document-meta-item">📝 ${doc.word_count} words</span>
+                        ${doc.file_size ? `<span class="document-meta-item">📦 ${formatFileSize(doc.file_size)}</span>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <span class="empty-state-icon">📂</span>
+                    <p>No documents uploaded yet</p>
+                    <p>Upload a document to get started!</p>
+                </div>
+            `;
+            countBadge.textContent = '0 documents';
+        }
+    } catch (error) {
+        console.error('Failed to load documents:', error);
+        grid.innerHTML = `
+            <div class="empty-state">
+                <span class="empty-state-icon">⚠️</span>
+                <p>Failed to load documents</p>
+                <p>Please try again later</p>
+            </div>
+        `;
+    }
+}
+
+// Store current document data for view switching
+let currentModalDoc = null;
+let currentModalSummary = null;
+
+function viewDocument(docId) {
+    // Create and show a document viewer modal
+    fetch(`${API_BASE}/documents/${docId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.document) {
+                const doc = data.document;
+                currentModalDoc = doc;
+                currentModalSummary = null; // Reset summary
+
+                // Create modal overlay
+                let modal = document.getElementById('documentViewerModal');
+                if (!modal) {
+                    modal = document.createElement('div');
+                    modal.id = 'documentViewerModal';
+                    modal.className = 'document-modal-overlay';
+                    modal.innerHTML = `
+                        <div class="document-modal-content">
+                            <div class="document-modal-header">
+                                <h3 id="modalDocTitle"></h3>
+                                <button class="modal-close-btn" onclick="closeDocumentModal()">✕</button>
+                            </div>
+                            <div class="document-modal-tabs">
+                                <button class="modal-tab active" id="tabFull" onclick="switchDocView('full')">📄 Full Format</button>
+                                <button class="modal-tab" id="tabSummary" onclick="switchDocView('summary')">📝 Summarized</button>
+                            </div>
+                            <div class="document-modal-meta" id="modalDocMeta"></div>
+                            <div class="document-modal-body" id="modalDocBody"></div>
+                        </div>
+                    `;
+                    document.body.appendChild(modal);
+
+                    // Add modal styles if not present
+                    if (!document.getElementById('modalStyles')) {
+                        const styles = document.createElement('style');
+                        styles.id = 'modalStyles';
+                        styles.textContent = `
+                            .document-modal-overlay {
+                                position: fixed;
+                                top: 0; left: 0; right: 0; bottom: 0;
+                                background: rgba(0,0,0,0.7);
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                z-index: 10000;
+                                padding: 20px;
+                            }
+                            .document-modal-content {
+                                background: white;
+                                border-radius: 8px;
+                                max-width: 900px;
+                                width: 100%;
+                                max-height: 90vh;
+                                display: flex;
+                                flex-direction: column;
+                                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                            }
+                            .document-modal-header {
+                                display: flex;
+                                justify-content: space-between;
+                                align-items: center;
+                                padding: 16px 24px;
+                                border-bottom: 1px solid #eee;
+                                background: #f8f9fa;
+                                border-radius: 8px 8px 0 0;
+                            }
+                            .document-modal-header h3 {
+                                margin: 0;
+                                color: #003366;
+                            }
+                            .modal-close-btn {
+                                background: none;
+                                border: none;
+                                font-size: 24px;
+                                cursor: pointer;
+                                color: #666;
+                            }
+                            .modal-close-btn:hover { color: #dc3545; }
+                            .document-modal-tabs {
+                                display: flex;
+                                gap: 0;
+                                padding: 0 24px;
+                                background: #f8f9fa;
+                                border-bottom: 2px solid #e0e4e8;
+                            }
+                            .modal-tab {
+                                padding: 12px 24px;
+                                background: none;
+                                border: none;
+                                cursor: pointer;
+                                font-size: 14px;
+                                font-weight: 500;
+                                color: #666;
+                                border-bottom: 3px solid transparent;
+                                margin-bottom: -2px;
+                                transition: all 0.2s;
+                            }
+                            .modal-tab:hover {
+                                color: #003366;
+                                background: rgba(0,51,102,0.05);
+                            }
+                            .modal-tab.active {
+                                color: #003366;
+                                border-bottom-color: #003366;
+                                background: white;
+                            }
+                            .document-modal-meta {
+                                padding: 12px 24px;
+                                background: #f0f4f8;
+                                font-size: 14px;
+                                color: #666;
+                            }
+                            .document-modal-body {
+                                padding: 16px;
+                                overflow-y: auto;
+                                flex: 1;
+                                line-height: 1.6;
+                                font-size: 14px;
+                            }
+                            .summary-loading {
+                                display: flex;
+                                align-items: center;
+                                gap: 10px;
+                                color: #666;
+                                font-style: italic;
+                            }
+                            .summary-section { margin-bottom: 16px; }
+                            .summary-section h4 { 
+                                color: #003366; 
+                                margin: 0 0 8px 0;
+                                font-size: 14px;
+                                text-transform: uppercase;
+                                letter-spacing: 0.5px;
+                            }
+                            .summary-section p { margin: 0; line-height: 1.6; }
+                            [data-theme="dark"] .document-modal-content { background: #1a1a2e; }
+                            [data-theme="dark"] .document-modal-header { background: #252540; border-color: #333; }
+                            [data-theme="dark"] .document-modal-header h3 { color: #fff; }
+                            [data-theme="dark"] .document-modal-tabs { background: #252540; border-color: #333; }
+                            [data-theme="dark"] .modal-tab { color: #aaa; }
+                            [data-theme="dark"] .modal-tab.active { color: #fff; background: #1a1a2e; border-bottom-color: #4da6ff; }
+                            [data-theme="dark"] .document-modal-meta { background: #252540; color: #aaa; }
+                            [data-theme="dark"] .document-modal-body { color: #ddd; }
+                        `;
+                        document.head.appendChild(styles);
+                    }
+                }
+
+                // Reset tabs
+                document.getElementById('tabFull').classList.add('active');
+                document.getElementById('tabSummary').classList.remove('active');
+
+                // Populate modal content
+                document.getElementById('modalDocTitle').textContent = doc.title || doc.filename;
+                document.getElementById('modalDocMeta').innerHTML = `
+                    <span>📄 ID: ${docId}</span> • 
+                    <span>📝 ${doc.word_count} words</span> • 
+                    <span>📦 ${formatFileSize(doc.file_size || 0)}</span>
+                `;
+                document.getElementById('modalDocBody').textContent = doc.full_text || doc.text_preview || 'No content available';
+
+                // Show modal
+                modal.style.display = 'flex';
+
+                // Close on backdrop click
+                modal.onclick = function (e) {
+                    if (e.target === modal) closeDocumentModal();
+                };
+            }
+        })
+        .catch(err => {
+            console.error('Failed to load document:', err);
+            alert('Failed to load document details');
+        });
+}
+
+function switchDocView(view) {
+    const tabFull = document.getElementById('tabFull');
+    const tabSummary = document.getElementById('tabSummary');
+    const body = document.getElementById('modalDocBody');
+
+    if (view === 'full') {
+        tabFull.classList.add('active');
+        tabSummary.classList.remove('active');
+        body.textContent = currentModalDoc.full_text || currentModalDoc.text_preview || 'No content available';
+    } else if (view === 'summary') {
+        tabFull.classList.remove('active');
+        tabSummary.classList.add('active');
+
+        // If summary already fetched, show it
+        if (currentModalSummary) {
+            renderSummary(currentModalSummary);
+        } else {
+            // Fetch summary
+            body.innerHTML = '<div class="summary-loading">⏳ Generating summary...</div>';
+
+            fetch(`${API_BASE}/summarize-all`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: currentModalDoc.full_text || currentModalDoc.text_preview })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.summaries) {
+                        currentModalSummary = data.summaries;
+                        renderSummary(data.summaries);
+                    } else {
+                        body.innerHTML = '<p>⚠️ Could not generate summary. Please try again.</p>';
+                    }
+                })
+                .catch(err => {
+                    console.error('Summary error:', err);
+                    body.innerHTML = '<p>⚠️ Failed to generate summary.</p>';
+                });
+        }
+    }
+}
+
+function renderSummary(summaries) {
+    const body = document.getElementById('modalDocBody');
+
+    // Get the director level summary as the general summary (balanced detail)
+    let generalSummary = summaries.director?.content ||
+        summaries.officer?.content ||
+        summaries.secretary?.content ||
+        'Summary not available';
+
+    // Trim extra whitespace
+    generalSummary = generalSummary.trim().replace(/\n{3,}/g, '\n\n');
+
+    body.innerHTML = `
+        <div class="summary-container">
+            <div class="summary-header">
+                <h4>📝 Document Summary</h4>
+            </div>
+            <div class="summary-content">
+                ${escapeHtml(generalSummary)}
+            </div>
+        </div>
+        <style>
+            .summary-container {
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                border-radius: 6px;
+                padding: 16px;
+                border-left: 3px solid #003366;
+            }
+            .summary-header {
+                margin-bottom: 8px;
+            }
+            .summary-header h4 {
+                margin: 0;
+                color: #003366;
+                font-size: 16px;
+            }
+            .summary-content {
+                line-height: 1.6;
+                color: #333;
+                font-size: 14px;
+            }
+            [data-theme="dark"] .summary-container {
+                background: linear-gradient(135deg, #252540 0%, #1a1a2e 100%);
+            }
+            [data-theme="dark"] .summary-header h4 { color: #4da6ff; }
+            [data-theme="dark"] .summary-content { color: #ddd; }
+        </style>
+    `;
+}
+
+function closeDocumentModal() {
+    const modal = document.getElementById('documentViewerModal');
+    if (modal) modal.style.display = 'none';
+    currentModalDoc = null;
+    currentModalSummary = null;
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// Update navigation to load documents when section is shown
+const originalShowSection = typeof showSection === 'function' ? showSection : null;
 
 async function loadAnalyticsData() {
     try {

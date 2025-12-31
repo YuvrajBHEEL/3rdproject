@@ -297,6 +297,20 @@ class SemanticSearch:
         """Get number of indexed documents"""
         return len(self.documents)
     
+    def get_all_documents(self) -> List[Dict]:
+        """Get all indexed documents with metadata"""
+        docs = []
+        for doc_id, doc in self.documents.items():
+            docs.append({
+                'doc_id': doc_id,
+                'title': doc.get('title', doc_id),
+                'text_preview': doc.get('text', '')[:300] + '...' if len(doc.get('text', '')) > 300 else doc.get('text', ''),
+                'word_count': len(doc.get('text', '').split()),
+                'chunk_count': len(doc.get('chunks', [])),
+                'metadata': doc.get('metadata', {})
+            })
+        return docs
+    
     def clear_index(self):
         """Clear all indexed documents"""
         self.documents = {}
